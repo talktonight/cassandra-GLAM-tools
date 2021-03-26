@@ -1,12 +1,11 @@
 import logging
 import os
 from datetime import datetime, date, timedelta
-import subprocess
 from sqs_listener import SqsListener
 from config import config
 from etl.s3 import get_mediacount_file_by_date
 from etl.mediacounts_dump import dailyinsert_from_file
-from etl.glams_table import close_glams_connections, create_database, get_glam_by_name, load_glams_images, open_glams_connections, refresh_glams_visualizations
+from etl.glams_table import close_glams_connections, create_database, get_glam_by_name, load_glams_images, open_glams_connections, refresh_glams_visualizations, setup_glam_tables
 from etl.etl_glam import process_glam
 
 
@@ -25,27 +24,16 @@ def _get_glams_from_body(body):
     return glams
 
 
-def _setup(name):
-    logging.info('Running setup.js for %s', name)
-    subprocess.run(['node', f'etl/setup.js', name], check=True)
-    logging.info('Subprocess setup.js completed')
-
-
-def _first_time_process(glam):
-    glam['lastrun'] = datetime.fromtimestamp(0)
-    create_database(glam['database'])
-    try:
-        _setup(glam['name'])
-    except subprocess.SubprocessError:
-        logging.error('Subprocess setup.py failed')
-        return
-    process_glam(glam)
-
-
-def _initialize_glams(glams):
-    logging.info(f"Initializing {len(glams)} glams")
+def _create_glams_database(glams):
+    logging.info(f"Creating db for {len(glams)} glams")
     for glam in glams:
-        _first_time_process(glam)
+        create_database(glam['database'])
+
+
+def _etl_glams_data(glams):
+    logging.info(f"Loading (etl) data for {len(glams)} glams")
+    for glam in glams:
+        process_glam(glam)
 
 
 def _process_mediacounts(glams):
@@ -64,13 +52,16 @@ def _process_mediacounts(glams):
 class NewGlamListener(SqsListener):
     def handle_message(self, body, attributes, message_attributes):
         glams = _get_glams_from_body(body)
-        _initialize_glams(glams)
+        _create_glams_database(glams)
         open_glams_connections(glams)
+        setup_glam_tables(glams)
+        _etl_glams_data(glams)
         load_glams_images(glams)
         _process_mediacounts(glams)
         refresh_glams_visualizations(glams)
         close_glams_connections(glams)
-        logging.info(f"Done adding {len(glams)} glams: {', '.join(map(lambda glam: glam['name'], glams))}")
+        logging.info(
+            f"Done adding {len(glams)} glams: {', '.join(map(lambda glam: glam['name'], glams))}")
 
 
 os.environ['AWS_ACCOUNT_ID'] = config['aws']['config']['credentials']['accessKeyId']

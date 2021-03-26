@@ -3,6 +3,8 @@ import psycopg2.extras
 import psycopg2.errors
 import logging
 from config import config
+from os import listdir
+from os.path import isfile, join, dirname
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -26,20 +28,6 @@ def get_glams():
     connection, cursor = open_connection()
     try:
         cursor.execute("SELECT * FROM glams")
-        glams = cursor.fetchall()
-        return glams
-    except Exception as error:
-        logging.error('Error getting all glams', error)
-    finally:
-        connection.close()
-        cursor.close()
-
-
-def get_glams():
-    connection, cursor = open_connection()
-    try:
-        cursor.execute(
-            "SELECT * FROM glams")
         glams = cursor.fetchall()
         return glams
     except Exception as error:
@@ -116,6 +104,20 @@ def create_database(database):
         cur.close()
 
 
+def setup_glam_tables(glams):
+    sql_queries_folder = f"{join(dirname(__file__), 'init_glam_sql')}"
+    sql_queries_files = []
+    for file_name in listdir(sql_queries_folder):
+        file_path = join(sql_queries_folder, file_name)
+        if isfile(file_path) and file_name.endswith('.sql'):
+            sql_queries_files.append(file_path)
+    for file_path in sql_queries_files:
+        file = open(file_path)
+        sql_query = file.read()
+        for glam in glams:
+            glam['cur'].execute(sql_query)
+
+
 def get_glam_connection_str(glam_database):
     return f"""dbname={glam_database} user={config['postgres']['user']}
                password={config['postgres']['password']}
@@ -156,6 +158,7 @@ def refresh_glams_visualizations(glams):
         logging.info(f"refrashing for {glam['name']}")
         glam['cur'].execute('REFRESH MATERIALIZED VIEW visualizations_sum')
         glam['cur'].execute('REFRESH MATERIALIZED VIEW visualizations_stats')
+
 
 def dailyinsert_query(key, arr, date_val):
     return f"SELECT * FROM dailyinsert('" + key.replace(

@@ -1,0 +1,25 @@
+FROM       python:3.8-alpine
+
+WORKDIR    /usr/cassandra-app
+
+# Copy and install production packages
+COPY       config config/
+COPY       etl etl/
+COPY       lib lib/
+COPY       __init__.py ./
+COPY       daily.py ./
+COPY       requirements.txt ./
+
+RUN        apk update \
+            && apk add openssh mariadb-connector-c autossh
+RUN        pip install -r requirements.txt
+RUN        autossh wmflabs
+
+# Non root user
+USER       user
+
+ENV        ENV="production"
+ENV        PORT=8080
+EXPOSE     8080
+ENTRYPOINT ["python"]
+CMD        ["daily"]

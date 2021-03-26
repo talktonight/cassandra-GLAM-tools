@@ -6,7 +6,8 @@ from botocore.config import Config
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
 
-env = os.environ['ENV']
+# env = os.environ['ENV']
+env = "production"
 
 logging.info(f"env: {env}")
 
